@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Select Images for Collage - {{ page_title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background: #f9f9f9;
+            padding: 20px;
+        }
+        h1 {
+            color: #e60023;
+            margin-bottom: 20px;
+        }
+        h2 {
+            color: #e60023;
+            margin-bottom: 30px;
+        }
+        .message {
+            color: #e60023;
+            font-size: 1.2em;
+            margin-bottom: 20px;
+        }
+        .title-input-container {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #e9e9e9;
+            border-radius: 8px;
+            display: inline-block;
+        }
+        .title-input-container label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+        .title-input-container input[type="text"] {
+            width: 400px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        .image-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 20px;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .image-card {
+            background: #fff;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-bottom: 10px;
+            cursor: pointer;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
+        }
+        .image-card:hover {
+            border-color: #aaa;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            transform: translateY(-2px);
+        }
+        .image-card.selected {
+            border-color: #e60023;
+            box-shadow: 0 0 15px rgba(230, 0, 35, 0.4);
+            background-color: #ffe6e9;
+        }
+        .image-card img {
+            max-width: 100%;
+            height: 150px;
+            object-fit: contain;
+            display: block;
+            border-bottom: 1px solid #eee;
+        }
+        .image-checkbox {
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .image-checkbox input[type="checkbox"] {
+            margin-right: 5px;
+            transform: scale(1.2);
+        }
+        .controls {
+            margin-top: 30px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+        }
+        .controls button {
+            padding: 12px 25px;
+            font-size: 18px;
+            background-color: #e60023;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        .controls button:hover {
+            background-color: #cc001f;
+        }
+        .selected-count {
+            margin-top: 0;
+            font-weight: bold;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <h1>Select Images for Collages</h1>
+    <h2>From: {{ page_title }}</h2>
+
+    {% if message %}
+        <p class="message">{{ message }}</p>
+    {% endif %}
+
+    <form id="imageSelectionForm" action="/generate_collages" method="post">
+        <div class="title-input-container">
+            <label for="customTitle">Edit Collage Title:</label>
+            <input type="text" id="customTitle" name="custom_title" value="{{ page_title }}">
+        </div>
+
+        <div class="image-gallery">
+            {% for img_data in images %}
+                {% set parts = img_data.split('|||') %}
+                {% set img_url = parts[0] %}
+                {% set img_alt = parts[1] if parts | length > 1 else 'Image' %}
+                <div class="image-card" data-image-url="{{ img_url }}">
+                    <img src="/proxy?url={{ img_url|urlencode }}" alt="{{ img_alt }}" onerror="this.onerror=null;this.src='https://via.placeholder.com/150?text=Image+Load+Error';" loading="lazy">
+                    <label class="image-checkbox">
+                        <input type="checkbox" name="selected_images" value="{{ img_url }}"> Select
+                    </label>
+                </div>
+            {% endfor %}
+        </div>
+
+        <div class="controls">
+            <button type="button" id="selectAllBtn" onclick="toggleAllImages()">Select All</button>
+            <button type="submit">Generate Collages</button>
+            <div class="selected-count" id="selectedCount">0 images selected</div>
+        </div>
+    </form>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('imageSelectionForm');
+            const imageCards = form.querySelectorAll('.image-card');
+            const selectedCountSpan = document.getElementById('selectedCount');
+            const selectAllBtn = document.getElementById('selectAllBtn');
+
+            function updateSelectedCount() {
+                const selected = form.querySelectorAll('input[name="selected_images"]:checked').length;
+                selectedCountSpan.innerText = `${selected} images selected`;
+                const totalCheckboxes = form.querySelectorAll('input[name="selected_images"]').length;
+                if (selected === totalCheckboxes && totalCheckboxes > 0) {
+                    selectAllBtn.textContent = 'Unselect All';
+                } else {
+                    selectAllBtn.textContent = 'Select All';
+                }
+            }
+
+            // Function to toggle all images
+            window.toggleAllImages = function() {
+                const checkboxes = form.querySelectorAll('input[name="selected_images"]');
+                const allCurrentlyChecked = Array.from(checkboxes).every(cb => cb.checked);
+
+                checkboxes.forEach(checkbox => {
+                    checkbox.checked = !allCurrentlyChecked;
+                    const card = checkbox.closest('.image-card');
+                    if (card) {
+                        card.classList.toggle('selected', checkbox.checked);
+                    }
+                });
+                updateSelectedCount();
+            };
+
+            imageCards.forEach(card => {
+                const checkbox = card.querySelector('input[type="checkbox"]');
+
+                // Toggle logic for card click
+                card.addEventListener('click', function(event) {
+                    if (event.target === checkbox) {
+                        return; 
+                    }
+                    checkbox.checked = !checkbox.checked;
+                    card.classList.toggle('selected', checkbox.checked);
+                    updateSelectedCount();
+                });
+                checkbox.addEventListener('change', function() {
+                    card.classList.toggle('selected', this.checked);
+                    updateSelectedCount();
+                });
+                if (checkbox.checked) {
+                     card.classList.add('selected');
+                }
+            });
+
+            form.addEventListener('submit', function(event) {
+                const selectedImages = Array.from(form.querySelectorAll('input[name="selected_images"]:checked')).map(cb => cb.value);
+                if (selectedImages.length < 2) {
+                    alert('Please select at least 2 images to create collages.');
+                    event.preventDefault();
+                }
+            });
+
+            // Call updateSelectedCount initially to show "0 images selected" and correct button text
+            updateSelectedCount(); 
+        });
+    </script>
+</body>
+</html>

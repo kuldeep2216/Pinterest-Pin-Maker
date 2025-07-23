@@ -1,0 +1,6 @@
+#install the required packages using pip
+Flask
+requests
+beautifulsoup4
+selenium
+webdriver-manager

@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Scrape URL</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+        input[type="text"] { width: 500px; padding: 10px; margin: 10px 0; }
+        input[type="submit"] { padding: 10px 20px; background-color: #e60023; color: white; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Enter URL to Scrape</h1>
+    <form action="/scrape" method="post">
+        <input type="text" name="url" placeholder="e.g., https://flybirdhardware.com/product-category/knob/" required>
+        <br>
+        <input type="submit" value="Scrape & Generate Collages">
+    </form>
+</body>
+</html>

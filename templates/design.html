@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collage Design</title>
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design.css') }}">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    
+    <style>
+        /* Basic styles for collage display area and cards, can be moved to design.css */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f0f2f5;
+            color: #333;
+        }
+        h1 {
+            text-align: center;
+            color: #e60023;
+            margin-bottom: 30px;
+        }
+        #controls {
+            text-align: center;
+            margin-bottom: 30px;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background-color: #e60023;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #cc001f;
+        }
+        #collageDisplayArea {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            padding: 20px;
+            justify-content: center;
+        }
+        .collage-card {
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+            padding: 15px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        canvas {
+            border: 1px solid #ddd;
+            display: block;
+            margin-bottom: 15px;
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Generated Collages</h1>
+
+    <div id="controls">
+        <p>Click the button below to generate collages based on your selected images.</p>
+        <button onclick="generateAllPossibleCollages()">Generate Collages</button>
+    </div>
+
+    <div id="collageDisplayArea">
+        </div>
+
+    <script>
+        // Data from Flask/Jinja2
+        const selectedImageData = JSON.parse('{{ images|tojson|safe }}');
+        const universalBaseTitle = '{{ page_title|tojson|safe }}'.replace(/&quot;/g, '"');
+        console.log("Universal Base Title:", universalBaseTitle); 
+        console.log("Selected Image Data (from Flask):", selectedImageData); 
+
+        // Fabric.js and Collage Management
+        const collageCanvases = {}; 
+        const collageTextObjects = {}; 
+        const collageWhiteLineObjects = {}; // Changed from collagePattiObjects
+
+        // Collage Dimensions (Pinterest-inspired defaults)
+        const internalCanvasWidth = 236; 
+        const pinterestRatio = 2 / 3; 
+        const titleAreaHeight = 45; 
+        const borderLineThickness = 2; 
+
+        // Collage Titles (PRIORITY GIVEN TO universalBaseTitle)
+        const individualCollageTitles = []; 
+
+        let currentTitleIndex = 0; 
+        const collageStyleOptions = [
+            // Style 1: Patti with Borders variations
+            { type: 'patti-with-borders', pattiColor: "#E60023", textColor: "#FFFFFF", fontSize: 17, fontWeight: "bold", textAlign: "center" },
+            { type: 'patti-with-borders', pattiColor: "#FF4081", textColor: "#FFFFFF", fontSize: 17, fontWeight: "bold", textAlign: "center" }, 
+            { type: 'patti-with-borders', pattiColor: "#FF6F00", textColor: "#FFFFFF", fontSize: 17, fontWeight: "bold", textAlign: "center" }, 
+            
+            // Style 2: Text Only variations
+            { type: 'text-only', textColor: "#E60023", fontSize: 26, fontWeight: "bold", textAlign: "center", fontFamily: "fantasy" }, 
+            { type: 'text-only', textColor: "#FF4081", fontSize: 24, fontWeight: "bold", textAlign: "center", fontFamily: "cursive" }, 
+            { type: 'text-only', textColor: "#C2185B", fontSize: 22, fontWeight: "bolder", textAlign: "center", fontFamily: "sans-serif" },
+            
+            // Add more variations of both types as needed
+            { type: 'patti-with-borders', pattiColor: "#D32F2F", textColor: "#FFFFFF", fontSize: 17, fontWeight: "bold", textAlign: "center" }, 
+            { type: 'text-only', textColor: "#F57C00", fontSize: 21, fontWeight: "bold", textAlign: "center", fontFamily: "serif" }
+        ];
+
+        let currentStyleIndex = 0; 
+        // This is the "master" function that orchestrates creating all the desired collages
+        async function generateAllPossibleCollages() {
+            const collageDisplayArea = document.getElementById('collageDisplayArea');
+            collageDisplayArea.innerHTML = ''; 
+            currentCollageGlobalIndex = 0; 
+            currentTitleIndex = 0; 
+            currentStyleIndex = 0; 
+            const desiredNumberOfCollages = 6; 
+            individualCollageTitles.length = 0; 
+            const maxExpectedCollageTypes = desiredNumberOfCollages; 
+            for (let i = 0; i < maxExpectedCollageTypes; i++) {
+                individualCollageTitles.push(universalBaseTitle);
+            }
+            // Add other generic titles after the universal base title slots are filled
+            individualCollageTitles.push(
+                "New Arrivals", "Best Sellers", "Limited Edition",
+                "Spring Collection", "Summer Vibes", "Winter Wonders",
+                "Autumn Essentials", "Home Decor", "Fashion Trends",
+                "Gifts for Her", "Gifts for Him"
+            );
+            if (selectedImageData.length < 1) {
+                const messageDiv = document.createElement("div");
+                messageDiv.style.gridColumn = "1 / -1";
+                messageDiv.style.textAlign = "center";
+                messageDiv.style.padding = "20px";
+                messageDiv.style.color = "#888";
+                messageDiv.innerText = "No images selected to create collages. Please go back and select images.";
+                collageDisplayArea.appendChild(messageDiv);
+                return;
+            }
+            const collagesToGeneratePromises = [];
+            let collageSizesPossible = []; 
+            const numSelectedImages = selectedImageData.length;
+            console.log("Number of selected images:", numSelectedImages); 
+            // Determine which collage sizes are possible based on the uploaded images
+            if (numSelectedImages >= 1) { collageSizesPossible.push(1); }
+            if (numSelectedImages >= 2) { collageSizesPossible.push(2); }
+            if (numSelectedImages >= 4) { collageSizesPossible.push(4); }
+            if (numSelectedImages >= 6) { collageSizesPossible.push(6); }
+            // Fallback: If no sizes were possible but images exist (e.g., you only uploaded 3 images), default to 1-image collage
+            if (collageSizesPossible.length === 0 && numSelectedImages > 0) {
+                collageSizesPossible.push(1);
+            }
+            if (collageSizesPossible.length === 0) {
+                console.warn("No collage sizes possible given selected images. Cannot generate collages.");
+                const messageDiv = document.createElement("div");
+                messageDiv.style.gridColumn = "1 / -1";
+                messageDiv.style.textAlign = "center";
+                messageDiv.style.padding = "20px";
+                messageDiv.style.color = "#888";
+                messageDiv.innerText = "Not enough images selected to create any collages. Please select more images.";
+                collageDisplayArea.appendChild(messageDiv);
+                return;
+            }
+            console.log("Desired number of collages to attempt:", desiredNumberOfCollages);
+            console.log("Possible collage sizes based on selected images:", collageSizesPossible);
+            // Loop to generate the desired number of collages
+            for (let i = 0; i < desiredNumberOfCollages; i++) {
+                // Randomly pick a collage size from the possible options
+                const randomSizeIndex = Math.floor(Math.random() * collageSizesPossible.length);
+                const sizeToUse = collageSizesPossible[randomSizeIndex];
+                // Shuffle images for each collage to get different combinations
+                const tempShuffled = [...selectedImageData].sort(() => 0.5 - Math.random());
+                const imagesToUseForThisCollage = tempShuffled.slice(0, sizeToUse);
+                // Only create a collage if we successfully gathered the required number of images for this size
+                if (imagesToUseForThisCollage.length === sizeToUse && imagesToUseForThisCollage.length > 0) {
+                    collagesToGeneratePromises.push(createAndDisplaySingleCollage(imagesToUseForThisCollage, currentCollageGlobalIndex));
+                    currentCollageGlobalIndex++;
+                } else {
+                    console.warn(`Skipping collage ${i+1}: Could not get ${sizeToUse} images. Only got ${imagesToUseForThisCollage.length}.`);
+                }
+            }
+            Promise.all(collagesToGeneratePromises).then(() => {
+                console.log("All requested collages have been attempted.");
+            }).catch(error => {
+                console.error("Error generating collages:", error);
+            });
+        }
+        async function createAndDisplaySingleCollage(imagesToUse, collageIndex) {
+            console.log(`--- Creating Collage ${collageIndex} with ${imagesToUse.length} images ---`); 
+            if (imagesToUse.length === 0) {
+                console.warn(`Collage ${collageIndex}: No images provided for this collage instance. Skipping.`);
+                return;
+            }
+
+            let layoutType;
+            let topImageCount = 0;
+            let bottomImageCount = 0;
+
+            if (imagesToUse.length === 1) {
+                layoutType = 'single-image';
+            } else if (imagesToUse.length === 2) {
+                layoutType = 'two-images-middle-title';
+                topImageCount = 1;
+                bottomImageCount = 1;
+            } else if (imagesToUse.length === 4) {
+                layoutType = 'four-images-middle-title';
+                topImageCount = 2;
+                bottomImageCount = 2;
+            } else if (imagesToUse.length === 6) {
+                layoutType = 'six-images-middle-title';
+                topImageCount = 2;
+                bottomImageCount = 4;
+            } else {
+                layoutType = 'default-grid-bottom-title';
+            }
+            console.log(`Collage ${collageIndex}: Layout Type:`, layoutType); 
+            const collageCard = document.createElement("div");
+            collageCard.className = "collage-card";
+            const collageCanvasEl = document.createElement("canvas");
+            const canvasId = "collageCanvas" + collageIndex;
+            collageCanvasEl.id = canvasId;
+            collageCard.appendChild(collageCanvasEl);
+            const downloadBtn = document.createElement("button");
+            downloadBtn.innerText = "Download Collage";
+            downloadBtn.onclick = () => downloadCollage(canvasId);
+            collageCard.appendChild(downloadBtn);
+            document.getElementById('collageDisplayArea').appendChild(collageCard);
+            const fc = new fabric.Canvas(collageCanvasEl);
+            collageCanvases[canvasId] = fc;
+            fc.setWidth(internalCanvasWidth);
+            let totalCanvasHeight;
+            let titleYPosition;
+            switch (layoutType) {
+                case 'single-image':
+                    totalCanvasHeight = internalCanvasWidth / pinterestRatio;
+                    titleYPosition = totalCanvasHeight - titleAreaHeight;
+                    break;
+                case 'two-images-middle-title':
+                case 'four-images-middle-title':
+                case 'six-images-middle-title': 
+                    const totalImageHeightSpace = (internalCanvasWidth / pinterestRatio) - titleAreaHeight;
+                    const totalImagesInSplit = topImageCount + bottomImageCount;
+                    const topSectionHeight = totalImagesInSplit > 0 ? totalImageHeightSpace * (topImageCount / totalImagesInSplit) : 0; 
+                    const bottomSectionHeight = totalImagesInSplit > 0 ? totalImageHeightSpace * (bottomImageCount / totalImagesInSplit) : 0; 
+
+                    totalCanvasHeight = topSectionHeight + bottomSectionHeight + titleAreaHeight;
+                    titleYPosition = topSectionHeight;
+                    break;
+                case 'default-grid-bottom-title':
+                    totalCanvasHeight = internalCanvasWidth / pinterestRatio;
+                    titleYPosition = totalCanvasHeight - titleAreaHeight;
+                    break;
+            }
+            fc.setHeight(totalCanvasHeight);
+            console.log(`Collage ${collageIndex}: Canvas Dimensions: ${fc.getWidth()}x${fc.getHeight()}, Title Patti Y Position: ${titleYPosition}`); 
+            const imageLoadPromises = imagesToUse.map(async (imgUrl, idx) => {
+                console.log(`Collage ${collageIndex}, Image ${idx}: Attempting to load ${imgUrl}`); 
+                return new Promise(resolve => {
+                    fabric.Image.fromURL(`/proxy?url=${encodeURIComponent(imgUrl)}`, img => {
+                        if (!img || img.width === 0 || img.height === 0) {
+                            console.warn(`Collage ${collageIndex}, Image ${idx}: Failed to load or invalid image (width: ${img ? img.width : 'N/A'}, height: ${img ? img.height : 'N/A'}) for URL: ${imgUrl}`); 
+                            resolve(null); 
+                            return;
+                        }
+                        console.log(`Collage ${collageIndex}, Image ${idx}: Image loaded successfully. Original dimensions: ${img.width}x${img.height}`); 
+
+                        let currentCellWidth;
+                        let currentCellHeight;
+                        let currentImageLeft;
+                        let currentImageTop;
+                        let clipRect = null; 
+
+                        function getGridCellInfo(imageIndexInSection, totalImagesInSection, sectionWidth, sectionHeight) {
+                            console.log(` Collage ${collageIndex}, Image ${idx} [getGridCellInfo] Inputs: idxInS=${imageIndexInSection}, totalInS=${totalImagesInSection}, secW=${sectionWidth}, secH=${sectionHeight}`); 
+                            let cols, rows;
+                            let cellWidth, cellHeight;
+                            let leftOffset, topOffset;
+
+                            if (totalImagesInSection === 1) { cols = 1; rows = 1; } 
+                            else if (totalImagesInSection === 2) { cols = 2; rows = 1; }
+                            else if (totalImagesInSection === 3) { cols = 2; rows = 2; } 
+                            else if (totalImagesInSection === 4) { cols = 2; rows = 2; }
+                            else { 
+                                cols = Math.ceil(Math.sqrt(totalImagesInSection));
+                                rows = Math.ceil(totalImagesInSection / cols);
+                            }
+
+                            cellWidth = (cols > 0 && sectionWidth !== 0 && !isNaN(sectionWidth) && isFinite(sectionWidth)) ? sectionWidth / cols : 0;
+                            cellHeight = (rows > 0 && sectionHeight !== 0 && !isNaN(sectionHeight) && isFinite(sectionHeight)) ? sectionHeight / rows : 0;
+                            
+                            if (isNaN(cellWidth) || isNaN(cellHeight) || !isFinite(cellWidth) || !isFinite(cellHeight)) { 
+                                console.error(` Collage ${collageIndex}, Image ${idx} [getGridCellInfo] Invalid cell dimensions! cols: ${cols}, rows: ${rows}, secW: ${sectionWidth}, secH: ${sectionHeight}`);
+                                cellWidth = 0;
+                                cellHeight = 0;
+                            }
+
+                            let rowInGrid = Math.floor(imageIndexInSection / cols);
+                            let colInGrid = imageIndexInSection % cols;
+
+                            leftOffset = colInGrid * cellWidth;
+                            topOffset = rowInGrid * cellHeight;
+
+                            if (totalImagesInSection === 3 && imageIndexInSection === 2) {
+                                leftOffset = (sectionWidth - cellWidth) / 2; 
+                                topOffset = cellHeight; 
+                            }
+                            console.log(` Collage ${collageIndex}, Image ${idx} [getGridCellInfo] Result: cellW=${cellWidth}, cellH=${cellHeight}, leftO=${leftOffset}, topO=${topOffset}`); 
+                            return { cellWidth, cellHeight, leftOffset, topOffset };
+                        }
+
+                        switch (layoutType) {
+                            case 'single-image':
+                                currentCellWidth = fc.getWidth();
+                                currentCellHeight = totalCanvasHeight - titleAreaHeight;
+                                currentImageLeft = 0;
+                                currentImageTop = 0;
+                                clipRect = { left: 0, top: 0, width: currentCellWidth, height: currentCellHeight };
+                                break;
+                            case 'two-images-middle-title':
+                            case 'four-images-middle-title':
+                            case 'six-images-middle-title': 
+                                const totalImagesInSplit = topImageCount + bottomImageCount;
+                                const totalImageHeightSpace = totalCanvasHeight - titleAreaHeight;
+                                const topSectionHeight = totalImagesInSplit > 0 ? totalImageHeightSpace * (topImageCount / totalImagesInSplit) : 0;
+                                const bottomSectionHeight = totalImagesInSplit > 0 ? totalImageHeightSpace * (bottomImageCount / totalImagesInSplit) : 0;
+
+                                if (idx < topImageCount) { 
+                                    const imageIndexInSection = idx;
+                                    const sectionWidth = fc.getWidth();
+                                    const sectionHeight = topSectionHeight;
+                                    const cellInfo = getGridCellInfo(imageIndexInSection, topImageCount, sectionWidth, sectionHeight);
+
+                                    currentCellWidth = cellInfo.cellWidth;
+                                    currentCellHeight = cellInfo.cellHeight;
+                                    currentImageLeft = cellInfo.leftOffset;
+                                    currentImageTop = cellInfo.topOffset;
+
+                                    clipRect = { left: currentImageLeft, top: currentImageTop, width: currentCellWidth, height: currentCellHeight };
+
+                                } else { 
+                                    const imageIndexInSection = idx - topImageCount;
+                                    const sectionWidth = fc.getWidth();
+                                    const sectionHeight = bottomSectionHeight;
+                                    const cellInfo = getGridCellInfo(imageIndexInSection, bottomImageCount, sectionWidth, sectionHeight);
+
+                                    currentCellWidth = cellInfo.cellWidth;
+                                    currentCellHeight = cellInfo.cellHeight;
+                                    currentImageLeft = cellInfo.leftOffset;
+                                    currentImageTop = titleYPosition + titleAreaHeight + cellInfo.topOffset; 
+
+                                    clipRect = { left: currentImageLeft, top: currentImageTop, width: currentCellWidth, height: currentCellHeight };
+                                }
+                                break;
+                            case 'default-grid-bottom-title':
+                                let numColsDefault = 1;
+                                if (imagesToUse.length > 1) {
+                                   numColsDefault = Math.min(2, imagesToUse.length); 
+                                }
+                                const numRowsDefault = Math.ceil(imagesToUse.length / numColsDefault);
+
+                                currentCellWidth = numColsDefault > 0 ? fc.getWidth() / numColsDefault : 0; 
+                                currentCellHeight = numRowsDefault > 0 ? (totalCanvasHeight - titleAreaHeight) / numRowsDefault : 0; 
+                                
+                                if (isNaN(currentCellWidth) || isNaN(currentCellHeight) || !isFinite(currentCellWidth) || !isFinite(currentCellHeight)) { 
+                                    console.error(` Collage ${collageIndex}, Image ${idx} [default-grid] Invalid currentCell dimensions! numCols: ${numColsDefault}, numRows: ${numRowsDefault}`);
+                                    currentCellWidth = 0;
+                                    currentCellHeight = 0;
+                                }
+
+                                const row = Math.floor(idx / numColsDefault);
+                                const col = idx % numColsDefault;
+
+                                currentImageTop = row * currentCellHeight;
+                                currentImageLeft = col * currentCellWidth;
+                                clipRect = { left: currentImageLeft, top: currentImageTop, width: currentCellWidth, height: currentCellHeight };
+                                break;
+                        }
+
+                        const scaleX = currentCellWidth / img.width;
+                        const scaleY = currentCellHeight / img.height;
+                        const scale = Math.max(scaleX, scaleY); 
+                        
+                        console.log(`Collage ${collageIndex}, Image ${idx}: Pre-scaled values - img.width:${img.width}, img.height:${img.height}, currentCellWidth:${currentCellWidth}, currentCellHeight:${currentCellHeight}`); 
+                        console.log(`Collage ${collageIndex}, Image ${idx}: Scales - scaleX:${scaleX}, scaleY:${scaleY}, chosen scale:${scale}`); 
+
+                        if (isNaN(scale) || !isFinite(scale)) {
+                            console.error(`Collage ${collageIndex}, Image ${idx}: Invalid 'scale' value (${scale}). Skipping image scaling.`);
+                            resolve(null); 
+                            return;
+                        }
+
+                        const scaledWidth = img.width * scale; 
+                        const scaledHeight = img.height * scale;
+                        
+                        console.log(`Collage ${collageIndex}, Image ${idx}: Scaled dimensions - scaledWidth:${scaledWidth}, scaledHeight:${scaledHeight}`); 
+
+                        const leftOffset = currentImageLeft + (currentCellWidth - scaledWidth) / 2;
+                        const topOffset = currentImageTop + (currentCellHeight - scaledHeight) / 2;
+
+                        img.set({
+                            left: leftOffset,
+                            top: topOffset,
+                            scaleX: scale,
+                            scaleY: scale,
+                            selectable: false,
+                            evented: false,
+                            clipTo: function(ctx) {
+                                if (clipRect) {
+                                    ctx.rect(clipRect.left, clipRect.top, clipRect.width, clipRect.height);
+                                }
+                            }
+                        });
+                        fc.add(img);
+                        fc.sendToBack(img); 
+                        resolve(img);
+                    }, { crossOrigin: 'anonymous' }); 
+                });
+            });
+
+            await Promise.all(imageLoadPromises); 
+
+            const collageTitle = individualCollageTitles[currentTitleIndex % individualCollageTitles.length];
+            currentTitleIndex++; 
+            console.log(`Collage ${collageIndex}: Using Collage Title: "${collageTitle}"`); 
+
+            const initialStyle = collageStyleOptions[currentStyleIndex];
+            currentStyleIndex = (currentStyleIndex + 1) % collageStyleOptions.length;
+            console.log(`Collage ${collageIndex}: Style Type: ${initialStyle.type}, Text Color: ${initialStyle.textColor}, Font Size: ${initialStyle.fontSize}, Font Weight: ${initialStyle.fontWeight}, Text Align: ${initialStyle.textAlign}, Font Family: ${initialStyle.fontFamily || 'Default'}`); 
+
+            if (initialStyle.type === 'patti-with-borders') {
+                const whiteLine = new fabric.Rect({
+                    top: titleYPosition, 
+                    left: 0,
+                    width: fc.getWidth(),
+                    height: titleAreaHeight,
+                    fill: initialStyle.pattiColor,
+                    selectable: false
+                });
+                const topLine = new fabric.Line(
+                    [0, titleYPosition, fc.getWidth(), titleYPosition], 
+                    {
+                        stroke: '#FFFFFF',
+                        strokeWidth: borderLineThickness,
+                        selectable: false,
+                        evented: false
+                    }
+                );
+                const bottomLine = new fabric.Line(
+                    [0, titleYPosition + titleAreaHeight, fc.getWidth(), titleYPosition + titleAreaHeight],
+                    {
+                        stroke: '#FFFFFF',
+                        strokeWidth: borderLineThickness,
+                        selectable: false,
+                        evented: false
+                    }
+                );
+                fc.add(whiteLine);
+                fc.add(topLine);
+                fc.add(bottomLine);
+                collageWhiteLineObjects[canvasId] = whiteLine;
+                console.log(`Collage ${collageIndex}: WhiteLine (formerly Patti) and Border Lines added.`);
+            }
+
+            const text = new fabric.Textbox(collageTitle, {
+                top: titleYPosition + titleAreaHeight / 2,
+                left: fc.getWidth() / 2,
+                originX: "center",
+                originY: "center",
+                fontSize: initialStyle.fontSize, 
+                fill: initialStyle.textColor,
+                fontWeight: initialStyle.fontWeight, 
+                textAlign: initialStyle.textAlign, 
+                fontFamily: initialStyle.fontFamily || 'Arial',
+                width: fc.getWidth() - 30,
+                editable: true 
+            });
+
+            fc.add(text);
+            collageTextObjects[canvasId] = text; 
+            console.log(`Collage ${collageIndex}: Text object added.`); 
+
+            text.on('editing:exited', function() {
+                if (collageIndex < individualCollageTitles.length) {
+                    individualCollageTitles[collageIndex] = this.text;
+                } else {
+                    individualCollageTitles.push(this.text);
+                }
+            });
+
+            fc.renderAll(); 
+            console.log(`--- Collage ${collageIndex} Rendered ---`); 
+        }
+
+        // Helper function to download collage
+        function downloadCollage(canvasId) {
+            const canvas = document.getElementById(canvasId);
+            if (canvas) {
+                const dataURL = canvas.toDataURL({
+                    format: 'jpeg', 
+                    quality: 0.9 
+                });
+                const link = document.createElement('a');
+                link.download = `collage_${canvasId}.jpg`; 
+                link.href = dataURL;
+                document.body.appendChild(link); 
+                link.click(); 
+                document.body.removeChild(link); 
+            } else {
+                console.error("Canvas not found for download:", canvasId);
+            }
+        }
+    </script>
+</body>
+</html>
